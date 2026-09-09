@@ -1,65 +1,52 @@
-# 🩺 Gastro AI - Gastrointestinal Hastalık Teşhis ve Segmentasyon Sistemi
+# Gastro AI
 
-Bu proje, gastrointestinal (Gİ) endoskopi görüntülerinden derin öğrenme (Deep Learning) yöntemleriyle **8 farklı hastalık/anatomik yapının teşhisini (Classification)** ve **polip segmentasyonunu (Binary Polyp Segmentation)** gerçekleştiren entegre bir masaüstü klinik karar destek sistemidir.
+Gastrointestinal endoscopy image analysis application. Classifies 8 different GI conditions using ensemble DenseNet-121 and performs polyp segmentation with Residual U-Net. Built as a graduation project with CustomTkinter desktop interface.
 
----
+**Developer:** Ömer ERTAN
 
-## 🚀 Özellikler
+## Features
 
-- **Çoklu Sınıflandırma (Ensemble DenseNet-121):**
-  - 8 sınıf: *Polip, Aktif Ülseratif Kolit, Ezofajit, Boya ile Kaldırılmış Polip (EMR), Polip Rezeksiyon Sınırı, Normal Çekum, Normal Pilor, Normal Z-Çizgisi*.
-  - 3-Fold Ensemble ağırlıklı oylama ile yüksek doğruluk oranı.
-- **Açıklanabilir Yapay Zeka (Grad-CAM):**
-  - Modelin görüntünün neresine odaklandığını gösteren ısı haritası görselleştirmesi.
-- **Lezyon Segmentasyonu (Residual U-Net / TFLite):**
-  - Şüpheli polip alanlarının sınırlarını piksel düzeyinde hassas maskeleme.
-- **Hibrid Analiz & Hata Haritası:**
-  - Grad-CAM + U-Net kontur bindirme ve Ground Truth ile IoU/Dice skor kıyaslaması.
-- **Hekim Giriş & Kayıt Sistemi:**
-  - Yerel SQLite veritabanı ve SHA-256 şifreleme ile hekim oturum yönetimi.
-- **Profesyonel PDF Raporlama:**
-  - ReportLab ile hasta bilgileri, tahmin olasılık grafiği, orijinal/maske/overlay görselleri ve hekim klinik notlarını içeren resmi rapor çıktısı.
+- 8-class classification (polyp, ulcerative colitis, esophagitis, normal cecum, etc.)
+- 3-Fold ensemble weighted voting
+- Grad-CAM explainability heatmaps
+- Binary polyp segmentation (U-Net / TFLite)
+- Hybrid analysis with IoU/Dice scoring
+- Doctor login system with SQLite + SHA-256
+- PDF report generation with ReportLab
 
----
+## Setup
 
-## 📁 Proje Dizin Yapısı
+**Requirements:** Python 3.9+
 
-```text
-├── Assets/                     # Uygulama ikon ve logoları
-├── models/                     # Eğitilmiş Keras modelleri (DenseNet121 Folds & U-Net)
-├── tflite_models/              # Optimize edilmiş TFLite modelleri
-├── main_app_gi.py              # Ana masaüstü arayüzü (CustomTkinter)
-├── ensemble_predictor_gi.py    # Sınıflandırıcı ve Grad-CAM motoru
-├── U_Net.py                    # Residual U-Net segmentasyon mimarisi
-├── report_generator.py         # PDF raporlama motoru (ReportLab)
-├── Tablo.py                    # Model doğrulama ve metrik test scripti
-├── config.py                   # Global ayarlar ve yol tanımları
-├── requirements.txt            # Python bağımlılıkları
-└── .gitignore                  # Git hariç tutma kuralları
-```
-
----
-
-## 🛠️ Kurulum ve Çalıştırma
-
-### 1. Depoyu Klonlayın
 ```bash
-git clone https://github.com/KULLANICI_ADINIZ/GI_Entegre_Proje.git
-cd GI_Entegre_Proje
-```
-
-### 2. Gerekli Kütüphaneleri Yükleyin
-```bash
+git clone https://github.com/omerertann/GastroAI.git
+cd GastroAI
 pip install -r requirements.txt
-```
-
-### 3. Uygulamayı Başlatın
-```bash
 python main_app_gi.py
 ```
 
----
+## Dependencies
 
-## 👨‍💻 Lisans & Geliştirici
-- Geliştirici: Ömer Faruk
-- Bitirme Projesi / Klinik Karar Destek Sistemi
+- TensorFlow >= 2.10
+- CustomTkinter >= 5.2
+- OpenCV >= 4.8
+- NumPy, Pillow, Matplotlib, scikit-learn, ReportLab
+
+## Project Structure
+
+```
+├── main_app_gi.py              # Main desktop app (CustomTkinter GUI)
+├── ensemble_predictor_gi.py    # Classifier + Grad-CAM engine
+├── U_Net.py                    # Residual U-Net architecture
+├── report_generator.py         # PDF report generator
+├── config.py                   # Global settings and paths
+├── Tablo.py                    # Model validation and metrics
+├── models/                     # Trained Keras models (DenseNet121 + U-Net)
+├── tflite_models/              # Optimized TFLite models
+├── Assets/                     # App icons and logos
+└── requirements.txt            # Python dependencies
+```
+
+## License
+
+All rights reserved.
