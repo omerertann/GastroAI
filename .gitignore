@@ -1,0 +1,40 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Environments
+.env
+.venv
+env/
+venv/
+tf_env/
+ENV/
+
+# Distribution / Packaging
+build/
+dist/
+*.spec
+*.egg-info/
+.eggs/
+
+# Node.js (Frontend)
+node_modules/
+frontend/node_modules/
+frontend/dist/
+
+# Local databases & logs
+*.db
+*.sqlite3
+*.log
+analysis_results/
+Desktop/
+GastroAI_CrashLog.txt
+
+# Operating System Files
+.DS_Store
+desktop.ini
+Thumbs.db
+
+# Large Datasets (Optional - GitHub 100MB limit)
+datasets/

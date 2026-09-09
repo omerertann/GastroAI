@@ -1,0 +1,45 @@
+========================================================================
+GASTRO AI - ENTEGRE TESPİT VE TEŞHİS SİSTEMİ (v2.4 Final)
+========================================================================
+
+Tebrikler! Gastro AI projesi başarıyla kuruldu ve en optimize haline getirildi.
+Bu sürüm, hız ve doğruluk dengesi gözetilerek "Ensemble (3 Model)" yapısında çalışmaktadır.
+
+NASIL KULLANILIR?
+------------------------------------------------------------------------
+1. BAŞLATMA:
+   Masaüstünüzdeki "GastroAI_Baslat.bat" dosyasına çift tıklayın.
+   (İlk açılışta modeller arka planda yüklenir, bu sayede hemen işlem yapabilirsiniz.)
+
+2. GÖRÜNTÜ YÜKLEME:
+   - "Dosya > Görüntü Aç" menüsünü veya sol paneldeki "Görüntü Yükle" butonunu kullanın.
+   - Endoskopi görüntülerini seçin (.jpg, .png).
+
+3. HASTALIK TAHMİNİ:
+   - "Hastalığı Tahmin Et" butonuna basın.
+   - Yapay zeka, görüntüyü analiz eder ve en olası hastalığı olasılık grafiği ile sunar.
+
+4. SEGMENTASYON (POLİP TESPİTİ):
+   - Eğer hastalık "Polyps" ise veya polip şüpheniz varsa "Segmentasyon Başlat" butonuna basın.
+   - Sistem, polip sınırlarını kırmızı bir maske ile çizer.
+   - Varsa "Ground Truth" (Gerçek Maske) ile karşılaştırır ve IoU başarısını hesaplar.
+
+5. GELİŞMİŞ ANALİZLER:
+   - Araçlar menüsünden veya sol panelden:
+     * Grad-CAM: Yapay zekanın nereye odaklandığını ısı haritası olarak görün.
+     * Hibrid Görünüm: Grad-CAM ve Segmentasyon sonuçlarını üst üste bindirin.
+     * Karşılaştır (GT): Tahmininiz ile gerçek doktor verisini (varsa) yan yana kıyaslayın.
+
+6. RAPORLAMA:
+   - "Dosya > Analiz Sonuçlarını Raporla" diyerek şu anki ekranı resim olarak kaydedebilirsiniz.
+   - "Araçlar > Hızlı Rapor Oluştur" ile metin tabanlı özet alabilirsiniz.
+
+TEKNİK NOTLAR
+------------------------------------------------------------------------
+- Model: DenseNet121 Ensemble (Fold 1-3) + U-Net Binary Segmentation
+- Arayüz: Modern CustomTkinter (Dark/Light Tema Desteği)
+- Hız: Modeller başlangıçta asenkron yüklenir (Non-blocking UI).
+
+İyi Çalışmalar Dileriz.
+Gastro AI Development Team
+2025
