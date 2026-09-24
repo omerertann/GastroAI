@@ -34,11 +34,46 @@ def get_asset_path(filename):
     return candidates[0]
 
 DATASETS_DIR = os.path.join(BASE_DIR, "datasets")
-MODELS_DIR   = os.path.join(BASE_DIR, "models")
 ANALYSIS_DIR = os.path.join(BASE_DIR, "analysis_results")
-
-os.makedirs(MODELS_DIR, exist_ok=True)
 os.makedirs(ANALYSIS_DIR, exist_ok=True)
+
+# Model directories — PyInstaller bundles data into _internal/ subdirectory
+def _find_dir(name):
+    """Find a data directory, checking multiple locations for EXE compatibility."""
+    candidates = [
+        os.path.join(BASE_DIR, name),
+    ]
+    if getattr(sys, 'frozen', False):
+        candidates.insert(0, os.path.join(BASE_DIR, "_internal", name))
+        if hasattr(sys, '_MEIPASS'):
+            candidates.insert(0, os.path.join(sys._MEIPASS, name))
+    for c in candidates:
+        if os.path.exists(c) and os.listdir(c):
+            return c
+    # Fallback: return first candidate and create it
+    os.makedirs(candidates[-1], exist_ok=True)
+    return candidates[-1]
+
+def _find_model_file(filename, *search_dirs):
+    """Search for a model file across multiple directories."""
+    for d in search_dirs:
+        p = os.path.join(d, filename)
+        if os.path.exists(p):
+            return p
+    # Also check _internal root for PyInstaller flat bundling
+    if getattr(sys, 'frozen', False):
+        p = os.path.join(BASE_DIR, "_internal", filename)
+        if os.path.exists(p):
+            return p
+    return os.path.join(search_dirs[0], filename)
+
+TFLITE_MODELS_DIR = _find_dir("tflite_models")
+_models_dir_candidate = _find_dir("models")
+
+# In EXE mode, PyInstaller may bundle all models into tflite_models/
+# If models/ is empty or doesn't have .keras files, use tflite_models/ as fallback
+_has_keras = any(f.endswith('.keras') for f in os.listdir(_models_dir_candidate)) if os.path.exists(_models_dir_candidate) else False
+MODELS_DIR = _models_dir_candidate if _has_keras else TFLITE_MODELS_DIR
 
 CLASSIFICATION_DATASET_PATH = os.path.join(DATASETS_DIR, "classification")
 SEGMENTATION_DATASET_PATH   = os.path.join(DATASETS_DIR, "segmentation")
@@ -55,16 +90,15 @@ else:
     print(f"[INFO] masks_fixed yok -> Normal masks kullanilacak: {SEGMENTATION_MASKS_PATH}")
 
 CLASSIFIER_MODEL_PATHS = [
-    os.path.join(MODELS_DIR, "gi_classifier_densenet121_fold1_v7.keras"),
-    os.path.join(MODELS_DIR, "gi_classifier_densenet121_fold2_v7.keras"),
-    os.path.join(MODELS_DIR, "gi_classifier_densenet121_fold3_v7.keras"),
+    _find_model_file("gi_classifier_densenet121_fold1_v7.keras", MODELS_DIR, TFLITE_MODELS_DIR),
+    _find_model_file("gi_classifier_densenet121_fold2_v7.keras", MODELS_DIR, TFLITE_MODELS_DIR),
+    _find_model_file("gi_classifier_densenet121_fold3_v7.keras", MODELS_DIR, TFLITE_MODELS_DIR),
 ]
 
 CLASSIFICATION_MODEL_PATH = CLASSIFIER_MODEL_PATHS[0]
 
-SEGMENTATION_MODEL_PATH = os.path.join(MODELS_DIR, "gi_segmenter_unet_binary_polyp.keras")
-TFLITE_MODELS_DIR = os.path.join(BASE_DIR, "tflite_models")
-SEGMENTATION_TFLITE_PATH = os.path.join(TFLITE_MODELS_DIR, "gi_segmenter_unet_binary_polyp.tflite")
+SEGMENTATION_MODEL_PATH = _find_model_file("gi_segmenter_unet_binary_polyp.keras", MODELS_DIR, TFLITE_MODELS_DIR)
+SEGMENTATION_TFLITE_PATH = _find_model_file("gi_segmenter_unet_binary_polyp.tflite", TFLITE_MODELS_DIR, MODELS_DIR)
 
 CLS_IMAGE_SIZE = (224, 224)
 SEG_IMAGE_SIZE = (256, 256)

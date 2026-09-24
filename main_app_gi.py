@@ -153,6 +153,12 @@ def refine_mask(prob_map, thresh, ksize=5):
     return mask_bin
 
 def compute_metrics_binary(pred_mask_bin: np.ndarray, true_mask_bin: np.ndarray):
+    # Ensure both masks have the same dimensions
+    if pred_mask_bin.shape != true_mask_bin.shape:
+        true_mask_bin = cv2.resize(true_mask_bin.astype(np.uint8), 
+                                    (pred_mask_bin.shape[1], pred_mask_bin.shape[0]), 
+                                    interpolation=cv2.INTER_NEAREST)
+    
     inter = np.logical_and(pred_mask_bin == 1, true_mask_bin == 1).sum()
     union = np.logical_or(pred_mask_bin == 1, true_mask_bin == 1).sum()
 
@@ -170,6 +176,14 @@ def compute_metrics_binary(pred_mask_bin: np.ndarray, true_mask_bin: np.ndarray)
     return iou, dice, int(tp), int(fp), int(fn)
 
 def error_map_bgr(orig_bgr: np.ndarray, pred_bin: np.ndarray, gt_bin: np.ndarray):
+    h, w = orig_bgr.shape[:2]
+    
+    # Ensure masks match the original image dimensions
+    if pred_bin.shape[0] != h or pred_bin.shape[1] != w:
+        pred_bin = cv2.resize(pred_bin.astype(np.uint8), (w, h), interpolation=cv2.INTER_NEAREST)
+    if gt_bin.shape[0] != h or gt_bin.shape[1] != w:
+        gt_bin = cv2.resize(gt_bin.astype(np.uint8), (w, h), interpolation=cv2.INTER_NEAREST)
+    
     err = np.zeros_like(orig_bgr)
 
     tp = np.logical_and(pred_bin == 1, gt_bin == 1)
@@ -1620,109 +1634,142 @@ class MainApp(ctk.CTk):
         self.after(0, lambda: self.result_label.configure(text="Hibrid Görünüm (GradCAM + Seg)"))
 
     def show_compare_view(self):
-        if not self.image_path: return
+        if not self.image_path:
+            self.after(0, lambda: messagebox.showwarning("Uyarı", "Lütfen önce bir görüntü yükleyin."))
+            return
         
-        gt_path = find_gt_mask_path(self.image_path, SEGMENTATION_MASKS_PATH)
-        is_pseudo_gt = False
-        
-        img_full = safe_imread_rgb(self.image_path)
-        
-        if not gt_path:
-            sim_mask_path, _ = self.find_closest_gt_mask(img_full, SEGMENTATION_IMAGES_PATH, SEGMENTATION_MASKS_PATH)
-            if sim_mask_path:
-                gt_path = sim_mask_path
-                is_pseudo_gt = True
-            else:
-                messagebox.showinfo("Bilgi", "Bu görüntü için Ground Truth bulunamadı ve benzer maske eşleştirilemedi.")
+        try:
+            if not self._ensure_segmentation_model():
                 return
 
-        gt_img = np.array(Image.open(gt_path).convert("L")) 
-        
-        if self._crop_box is None:
-             self._crop_box = get_crop_box_from_rgb_square(img_full, thr=25, zoom=1.0, pad=0)
-        
-        img_crop = crop_rgb_by_box(img_full, self._crop_box)
-        
-        gt_full_pil = Image.fromarray(gt_img).resize((img_full.shape[1], img_full.shape[0]), Image.NEAREST)
-        gt_full = np.array(gt_full_pil)
-        gt_crop = crop_gray_by_box(gt_full, self._crop_box)
-        
-        gt_bin = (gt_crop > 127).astype(np.uint8)
-        
-        if not self._ensure_segmentation_model():
-            return
+            img_full = safe_imread_rgb(self.image_path)
+            
+            if self._crop_box is None:
+                self._crop_box = get_crop_box_from_rgb_square(img_full, thr=25, zoom=1.0, pad=0)
+            
+            img_crop = crop_rgb_by_box(img_full, self._crop_box)
+            crop_h, crop_w = img_crop.shape[:2]
 
-        inp = cv2.resize(img_crop, SEG_IMAGE_SIZE).astype("float32")/255.0
-        
-        inp_batch = np.expand_dims(inp, axis=0)
-        inp_flip = cv2.flip(inp, 1)
-        inp_flip_batch = np.expand_dims(inp_flip, axis=0)
-        
-        pred1 = self.seg_model.predict(inp_batch, verbose=0)[0, :, :, 0]
-        pred2 = self.seg_model.predict(inp_flip_batch, verbose=0)[0, :, :, 0]
-        pred2_inv = cv2.flip(pred2, 1)
-        pred_avg = (pred1 + pred2_inv) / 2.0
-        
-        pred_bin_sm = refine_mask(pred_avg, self.seg_threshold)
-        pred_bin = cv2.resize(pred_bin_sm, (img_crop.shape[1], img_crop.shape[0]), interpolation=cv2.INTER_NEAREST)
+            # Model Tahmini Üret
+            inp = cv2.resize(img_crop, SEG_IMAGE_SIZE).astype("float32") / 255.0
+            inp_batch = np.expand_dims(inp, axis=0)
+            inp_flip = cv2.flip(inp, 1)
+            inp_flip_batch = np.expand_dims(inp_flip, axis=0)
+            
+            pred1 = self.seg_model.predict(inp_batch, verbose=0)[0, :, :, 0]
+            pred2 = self.seg_model.predict(inp_flip_batch, verbose=0)[0, :, :, 0]
+            pred2_inv = cv2.flip(pred2, 1)
+            pred_avg = (pred1 + pred2_inv) / 2.0
+            
+            pred_bin_sm = refine_mask(pred_avg, self.seg_threshold)
+            pred_bin = cv2.resize(pred_bin_sm, (crop_w, crop_h), interpolation=cv2.INTER_NEAREST)
 
-        if is_pseudo_gt and np.any(pred_bin) and np.any(gt_bin):
-            try:
-                M_pred = cv2.moments(pred_bin)
-                M_gt = cv2.moments(gt_bin)
-                if M_pred["m00"] > 0 and M_gt["m00"] > 0:
-                    cX_pred = int(M_pred["m10"] / M_pred["m00"])
-                    cY_pred = int(M_pred["m01"] / M_pred["m00"])
-                    cX_gt = int(M_gt["m10"] / M_gt["m00"])
-                    cY_gt = int(M_gt["m01"] / M_gt["m00"])
-                    shift_x = cX_pred - cX_gt
-                    shift_y = cY_pred - cY_gt
-                    T = np.float32([[1, 0, shift_x], [0, 1, shift_y]])
-                    gt_bin = cv2.warpAffine(gt_bin, T, (gt_bin.shape[1], gt_bin.shape[0]), flags=cv2.INTER_NEAREST)
-            except: pass
+            # Renkli tahmin maskesi
+            pred_color = np.zeros_like(img_crop)
+            pred_color[pred_bin == 1] = [255, 0, 0]
 
-        err_vis = error_map_bgr(img_crop, pred_bin, gt_bin)
-        err_vis_rgb = cv2.cvtColor(err_vis, cv2.COLOR_BGR2RGB) 
-        
-        pred_color = np.zeros_like(img_crop)
-        pred_color[pred_bin == 1] = [255, 0, 0]
-        
-        gt_color = np.zeros_like(img_crop)
-        gt_color[gt_bin == 1] = [0, 255, 0]
-        
-        iou, dice, tp, fp, fn = compute_metrics_binary(pred_bin, gt_bin)
-        self.last_iou = iou
-        self.last_dice = dice
-        
-        title_prefix = "Karşılaştırma (Benzer GT)" if is_pseudo_gt else "Karşılaştırma"
-        
-        self.after(0, lambda: self._display_compare_plot_safe(
-            img_crop, pred_bin, pred_color, gt_color, err_vis_rgb, iou, dice, title_prefix
-        ))
+            # Ground Truth ara (Varsa)
+            gt_path = find_gt_mask_path(self.image_path, SEGMENTATION_MASKS_PATH)
+            has_gt = False
+            gt_bin = None
+            gt_color = None
+            err_vis_rgb = None
+            iou = None
+            dice = None
 
-        res_txt = f"Karşılaştırma Penceresi Açıldı 🗗 | IoU: {iou:.3f}"
-        self.after(0, lambda: self.result_label.configure(text=res_txt))
+            if gt_path and os.path.exists(gt_path):
+                try:
+                    gt_img = np.array(Image.open(gt_path).convert("L"))
+                    gt_full_pil = Image.fromarray(gt_img).resize((img_full.shape[1], img_full.shape[0]), Image.NEAREST)
+                    gt_full = np.array(gt_full_pil)
+                    gt_crop = crop_gray_by_box(gt_full, self._crop_box)
+                    if gt_crop.shape[0] != crop_h or gt_crop.shape[1] != crop_w:
+                        gt_crop = cv2.resize(gt_crop, (crop_w, crop_h), interpolation=cv2.INTER_NEAREST)
+                    gt_bin = (gt_crop > 127).astype(np.uint8)
+                    has_gt = True
+                except Exception as e:
+                    print("GT maske okuma hatası:", e)
+                    has_gt = False
+
+            if has_gt and gt_bin is not None:
+                if gt_bin.shape[0] != crop_h or gt_bin.shape[1] != crop_w:
+                    gt_bin = cv2.resize(gt_bin, (crop_w, crop_h), interpolation=cv2.INTER_NEAREST)
+
+                img_crop_bgr = cv2.cvtColor(img_crop, cv2.COLOR_RGB2BGR)
+                err_vis_bgr = error_map_bgr(img_crop_bgr, pred_bin, gt_bin)
+                err_vis_rgb = cv2.cvtColor(err_vis_bgr, cv2.COLOR_BGR2RGB)
+
+                gt_color = np.zeros_like(img_crop)
+                gt_color[gt_bin == 1] = [0, 255, 0]
+
+                iou, dice, tp, fp, fn = compute_metrics_binary(pred_bin, gt_bin)
+                self.last_iou = iou
+                self.last_dice = dice
+                title_prefix = "Ground Truth Karşılaştırması"
+                res_txt = f"Karşılaştırma Penceresi Açıldı 🗗 | IoU: {iou:.3f} | Dice: {dice:.3f}"
+            else:
+                # Veri setinde maske olmasa bile kaliteli klinik analiz paneli
+                # Tahmin Olasılık Haritası
+                prob_map_resized = cv2.resize(pred_avg, (crop_w, crop_h))
+                prob_heatmap = np.uint8(255 * prob_map_resized)
+                prob_heatmap_color = cv2.applyColorMap(prob_heatmap, cv2.COLORMAP_JET)
+                prob_heatmap_rgb = cv2.cvtColor(prob_heatmap_color, cv2.COLOR_BGR2RGB)
+
+                # Segmentasyon Kontur & Lezyon Overlay
+                contour_overlay = img_crop.copy()
+                contours, _ = cv2.findContours(pred_bin.astype(np.uint8), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+                cv2.drawContours(contour_overlay, contours, -1, (255, 255, 0), 2)  # Sarı sınır çizgisi
+                
+                # Saydam kırmızı lezyon alanı
+                mask_indices = (pred_bin == 1)
+                contour_overlay[mask_indices] = (contour_overlay[mask_indices] * 0.45 + np.array([255, 0, 0]) * 0.55).astype(np.uint8)
+
+                gt_color = prob_heatmap_rgb
+                err_vis_rgb = contour_overlay
+                title_prefix = "Model Segmentasyon & Lezyon Analizi"
+                res_txt = "Segmentasyon Analiz Penceresi Açıldı 🗗"
+
+            self.after(0, lambda: self._display_compare_plot_safe(
+                img_crop, pred_bin, pred_color, gt_color, err_vis_rgb, iou, dice, title_prefix, has_gt
+            ))
+            self.after(0, lambda: self.result_label.configure(text=res_txt))
+        except Exception as e:
+            err_msg = str(e)
+            print(f"Karşılaştırma hatası: {e}")
+            self.after(0, lambda m=err_msg: messagebox.showerror("Karşılaştırma Hatası", f"Karşılaştırma sırasında hata oluştu:\n{m}"))
 
 
-    def _display_compare_plot_safe(self, img_crop, pred_bin, pred_color, gt_color, err_vis_rgb, iou, dice, title_prefix="Karşılaştırma"):
+    def _display_compare_plot_safe(self, img_crop, pred_bin, pred_color, gt_or_prob, err_or_overlay, iou, dice, title_prefix="Karşılaştırma", has_gt=False):
         try:
             is_dark = (ctk.get_appearance_mode() == "Dark")
             bg_color = "#0f172a" if is_dark else "#f8fafc"
             text_color = "#f8fafc" if is_dark else "#0f172a"
             
             plt.close("all") 
-            fig, axes = plt.subplots(2, 3, figsize=(14, 8), facecolor=bg_color)
-            fig.canvas.manager.set_window_title("Gastro AI - Karşılaştırma ve Hata Analizi")
-            fig.suptitle(f"{title_prefix} — IoU: {iou:.3f} | Dice: {dice:.3f}", fontsize=13, fontweight='bold', color=text_color)
+            fig, axes = plt.subplots(2, 3, figsize=(15, 8.5), facecolor=bg_color)
+            fig.canvas.manager.set_window_title("Gastro AI - Lezyon & Segmentasyon Analizi")
             
-            titles = [
-                ["Orijinal Görüntü", "Tahmin Maskesi (Binary)", "Tahmin Maskesi (Renkli)"],
-                ["Gerçek Maske (GT)", "Hata Haritası (TP=Yeşil, FP=Kırmızı, FN=Mavi)", ""]
-            ]
+            if has_gt and iou is not None:
+                header_text = f"{title_prefix} — IoU: {iou:.3f} | Dice: {dice:.3f}"
+            else:
+                header_text = f"{title_prefix} (Otomatik Derin Öğrenme Tespiti)"
+                
+            fig.suptitle(header_text, fontsize=13, fontweight='bold', color=text_color)
+            
+            if has_gt:
+                titles = [
+                    ["Orijinal Görüntü", "Tahmin Maskesi (Binary)", "Tahmin Maskesi (Renkli)"],
+                    ["Gerçek Maske (Ground Truth)", "Hata Haritası (TP=Yeşil, FP=Kırmızı, FN=Mavi)", ""]
+                ]
+            else:
+                titles = [
+                    ["Orijinal Görüntü", "Tespit Edilen Maske (Binary)", "Lezyon Maskesi (Renkli)"],
+                    ["Olasılık / Güven Isı Haritası", "Sınır Çizgili & Lezyon Overlay", ""]
+                ]
             
             images = [
                 [img_crop, pred_bin, pred_color],
-                [gt_color, err_vis_rgb, None]
+                [gt_or_prob, err_or_overlay, None]
             ]
             
             for r in range(2):
